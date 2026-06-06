@@ -257,6 +257,23 @@
       0%   { opacity:0.3; } 25% { opacity:1; } 50% { opacity:0.3; } 75% { opacity:0.8; } 100% { opacity:0.3; }
     }
 
+    /* ── Arm button ── */
+    .btn-arm {
+      background: transparent;
+      border: 1px solid rgba(255,140,0,0.4);
+      color: var(--ember);
+      font-size: 0.8rem;
+      padding: 0.75rem 2rem;
+      letter-spacing: 0.2em;
+      width: 100%;
+    }
+    .btn-arm:hover { border-color: var(--ember); background: rgba(255,140,0,0.08); }
+    .btn-arm.armed {
+      border-color: #4caf50;
+      color: #4caf50;
+      pointer-events: none;
+    }
+
     /* ── Section visibility ── */
     .hidden { display: none !important; }
   </style>
@@ -310,6 +327,8 @@
     <p style="font-size:0.85rem; color:rgba(232,220,200,0.6); line-height:1.8;">
       Stand ready.<br>When the host unleashes — all devices will scream as one.
     </p>
+    <button class="btn btn-arm" id="arm-btn" onclick="armAudio()">🔊 Tap to Arm Audio</button>
+    <p style="font-size:0.65rem; color:rgba(232,220,200,0.3); letter-spacing:0.1em;">Required on iPhone / Safari</p>
     <div id="status" class="status-waiting">Waiting for the host…</div>
   </div>
 
@@ -404,6 +423,7 @@ socket.on('room-created', ({ roomId }) => { currentRoomId = roomId; });
 
 function triggerScream() {
   if (!currentRoomId) return;
+  armAudioSilently(); // host unlocks their own audio context on this tap
   socket.emit('trigger-scream', { roomId: currentRoomId });
 }
 
@@ -442,10 +462,55 @@ socket.on('play-scream', ({ playAt }) => {
 });
 
 // ══════════════════════════════════════════════════════
+//  AUDIO CONTEXT — shared, created once on user gesture
+//  (iOS Safari blocks audio unless unlocked by a tap)
+// ══════════════════════════════════════════════════════
+let audioCtx = null;
+let audioArmed = false;
+
+function getAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // iOS suspends context until user gesture — resume it
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function armAudio() {
+  const ctx = getAudioContext();
+
+  // Play a tiny silent buffer — this is the trick that unlocks iOS audio
+  const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+
+  audioArmed = true;
+  const btn = document.getElementById('arm-btn');
+  if (btn) {
+    btn.textContent = '✅ Audio Armed';
+    btn.classList.add('armed');
+  }
+  setStatus('guest', 'Armed — await the scream', 'status-ready');
+}
+
+// Also arm when host taps "Unleash" (host is always interacting directly)
+function armAudioSilently() {
+  if (!audioArmed) {
+    getAudioContext();
+    audioArmed = true;
+  }
+}
+
+// ══════════════════════════════════════════════════════
 //  WEB AUDIO — RAGNARÖK SCREAM SYNTHESIS
 // ══════════════════════════════════════════════════════
 function playRagnarokScream() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = getAudioContext();
   const now = ctx.currentTime;
   const master = ctx.createGain();
   master.gain.setValueAtTime(0, now);
