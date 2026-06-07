@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>RAGNARÖK SYNC</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@900&family=Cinzel:wght@400;600&display=swap');
+
+    :root {
+      --fire: #ff4500;
+      --ember: #ff8c00;
+      --gold: #ffd700;
+      --ash: #0f0f0f;
+      --bone: #e8dcc8;
+      --clone-cyan: #00e5ff;
+      --clone-purple: #b040fb;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--ash);
+      color: var(--bone);
+      font-family: 'Cinzel', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 1.5rem 1rem 3rem;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse at 50% 110%, rgba(255,69,0,0.2) 0%, transparent 55%),
+        radial-gradient(ellipse at 20% 80%, rgba(255,140,0,0.08) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 80%, rgba(255,69,0,0.08) 0%, transparent 40%);
+      pointer-events: none;
+      transition: background 0.6s ease;
+    }
+
+    body.mode-clone::before {
+      background:
+        radial-gradient(ellipse at 50% 110%, rgba(0,229,255,0.15) 0%, transparent 55%),
+        radial-gradient(ellipse at 20% 80%, rgba(176,64,251,0.1) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 80%, rgba(0,229,255,0.08) 0%, transparent 40%);
+    }
+
+    .container {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 520px;
+      display: flex; flex-direction: column; align-items: center; gap: 1.5rem;
+    }
+
+    /* ── Title ── */
+    h1 {
+      font-family: 'Cinzel Decorative', cursive;
+      font-size: clamp(1.6rem, 7vw, 2.6rem);
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--ember) 50%, var(--fire) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: 0.05em; line-height: 1.1; text-align: center;
+      transition: all 0.5s ease;
+    }
+    h1.mode-clone {
+      background: linear-gradient(135deg, var(--clone-cyan) 0%, var(--clone-purple) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 0.65rem; letter-spacing: 0.3em; text-transform: uppercase;
+      color: rgba(232,220,200,0.4); text-align: center;
+    }
+
+    /* ── Mode Toggle ── */
+    .mode-toggle {
+      display: flex; gap: 0; width: 100%;
+      border: 1px solid rgba(255,140,0,0.2);
+      border-radius: 3px; overflow: hidden;
+    }
+    .mode-tab {
+      flex: 1; padding: 0.7rem 0.5rem;
+      background: transparent; border: none;
+      font-family: 'Cinzel', serif; font-size: 0.65rem;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      cursor: pointer; color: rgba(232,220,200,0.35);
+      transition: all 0.25s;
+    }
+    .mode-tab.active-ragnarok {
+      background: rgba(255,69,0,0.18);
+      color: var(--ember);
+      box-shadow: inset 0 0 20px rgba(255,69,0,0.1);
+    }
+    .mode-tab.active-clone {
+      background: rgba(0,229,255,0.12);
+      color: var(--clone-cyan);
+      box-shadow: inset 0 0 20px rgba(0,229,255,0.08);
+    }
+    .mode-sep { width: 1px; background: rgba(255,140,0,0.2); }
+
+    /* ── Cards ── */
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,140,0,0.15);
+      border-radius: 4px; padding: 1.5rem 1.25rem;
+      width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.1rem;
+      transition: border-color 0.4s;
+    }
+    .card.mode-clone { border-color: rgba(0,229,255,0.2); }
+
+    .card-title {
+      font-size: 0.62rem; letter-spacing: 0.28em; text-transform: uppercase;
+      color: var(--ember);
+    }
+    .card.mode-clone .card-title { color: var(--clone-cyan); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      padding: 0.8rem 2rem; border: none; border-radius: 2px;
+      font-family: 'Cinzel', serif; font-size: 0.8rem;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--fire), #cc2200); color: var(--bone); }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255,69,0,0.4); }
+
+    .btn-scream {
+      background: linear-gradient(135deg, var(--gold), var(--ember));
+      color: #1a1008; font-size: 0.95rem; padding: 1rem 2.5rem;
+      font-weight: 600; width: 100%;
+    }
+    .btn-scream:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(255,200,0,0.45); }
+    .btn-scream:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn-arm {
+      background: transparent; border: 1px solid rgba(255,140,0,0.35);
+      color: var(--ember); font-size: 0.75rem; padding: 0.7rem 1.5rem; width: 100%;
+    }
+    .btn-arm.armed { border-color: #4caf50; color: #4caf50; pointer-events: none; }
+
+    /* ── Clone Hold Button ── */
+    .clone-hold-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+      width: 100%;
+    }
+    .btn-clone-hold {
+      width: 140px; height: 140px; border-radius: 50%;
+      border: 2px solid rgba(0,229,255,0.3);
+      background: radial-gradient(circle at center, rgba(0,229,255,0.08), rgba(176,64,251,0.05));
+      color: var(--clone-cyan);
+      font-family: 'Cinzel Decorative', cursive;
+      font-size: 0.7rem; letter-spacing: 0.1em; text-align: center;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.3rem; position: relative; overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .btn-clone-hold .btn-icon { font-size: 2rem; }
+    .btn-clone-hold:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .btn-clone-hold.recording {
+      border-color: #ff1744;
+      background: radial-gradient(circle at center, rgba(255,23,68,0.15), rgba(176,64,251,0.08));
+      animation: recordPulse 0.8s ease-in-out infinite;
+      box-shadow: 0 0 30px rgba(255,23,68,0.35);
+    }
+    @keyframes recordPulse {
+      0%,100% { transform: scale(1); } 50% { transform: scale(1.05); }
+    }
+
+    .clone-hint { font-size: 0.65rem; letter-spacing: 0.15em; color: rgba(232,220,200,0.35); }
+
+    /* ── QR ── */
+    #qr-container { background: #fff; padding: 1rem; border-radius: 4px; display: none; }
+
+    /* ── Guest/room info ── */
+    .guest-count { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: rgba(232,220,200,0.55); }
+    .count-number { font-size: 1.5rem; font-weight: 600; color: var(--gold); line-height: 1; }
+    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 6px #4caf50; animation: pd 1.5s ease-in-out infinite; }
+    @keyframes pd { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+    .room-url { font-size: 0.6rem; color: rgba(232,220,200,0.28); word-break: break-all; }
+
+    /* ── Status ── */
+    #status, .status { font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; min-height: 1.1em; }
+    .status-waiting { color: rgba(232,220,200,0.38); }
+    .status-ready   { color: #4caf50; }
+    .status-scream  { color: var(--gold); animation: flicker 0.1s infinite; }
+    .status-clone   { color: var(--clone-cyan); }
+    .status-error   { color: var(--fire); }
+    @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:.65} }
+
+    /* ── Rune spinner ── */
+    .rune-spin { font-size: 2rem; display: inline-block; animation: rs 4s linear infinite; color: rgba(255,140,0,0.35); letter-spacing: 0.7em; }
+    @keyframes rs { 0%{opacity:.3} 25%{opacity:1} 50%{opacity:.3} 75%{opacity:.8} 100%{opacity:.3} }
+
+    /* ── CLONE RING VISUALIZER (guest) ── */
+    .clone-visualizer {
+      position: relative;
+      width: 200px; height: 200px;
+      display: none; align-items: center; justify-content: center;
+    }
+    .clone-visualizer.active { display: flex; }
+
+    .clone-center-label {
+      position: absolute;
+      font-family: 'Cinzel Decorative', cursive;
+      font-size: 0.65rem;
+      color: rgba(0,229,255,0.6);
+      letter-spacing: 0.1em;
+      text-align: center;
+      z-index: 2;
+    }
+
+    .clone-dot {
+      position: absolute;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(0,229,255,0.18);
+      border: 1px solid rgba(0,229,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.55rem; color: rgba(0,229,255,0.5);
+      transition: all 0.2s;
+    }
+    .clone-dot.speaking {
+      background: rgba(0,229,255,0.55);
+      border-color: var(--clone-cyan);
+      box-shadow: 0 0 18px var(--clone-cyan);
+      color: #fff;
+      transform: scale(1.35);
+    }
+    .clone-dot.spoke {
+      background: rgba(176,64,251,0.25);
+      border-color: var(--clone-purple);
+    }
+
+    /* ── Scream overlay ── */
+    #scream-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0; transition: opacity 0.15s;
+    }
+    #scream-overlay.active { opacity: 1; }
+    .scream-ring {
+      position: absolute; border-radius: 50%;
+      border: 2px solid var(--fire);
+      animation: ringOut 1.8s ease-out forwards; opacity: 0;
+    }
+    @keyframes ringOut { 0%{width:0;height:0;opacity:.9} 100%{width:300vmax;height:300vmax;opacity:0;border-width:0} }
+    .scream-text {
+      font-family: 'Cinzel Decorative', cursive;
+      font-size: clamp(3rem,14vw,7rem); font-weight: 900;
+      background: linear-gradient(135deg,#fff 0%,var(--gold) 40%,var(--fire) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      animation: st 2s ease-out forwards;
+      filter: drop-shadow(0 0 28px rgba(255,140,0,.8)); z-index: 1;
+    }
+    @keyframes st { 0%{opacity:0;transform:scale(.2) rotate(-5deg)} 15%{opacity:1;transform:scale(1.15) rotate(2deg)} 30%{transform:scale(.95) rotate(-1deg)} 50%{transform:scale(1.05);opacity:1} 100%{opacity:0;transform:scale(1.8)} }
+
+    /* ── Clone flash overlay ── */
+    #clone-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0;
+    }
+    #clone-overlay.active { opacity: 1; }
+    .clone-flash-text {
+      font-family: 'Cinzel Decorative', cursive;
+      font-size: clamp(1.2rem,6vw,3rem); font-weight: 900;
+      background: linear-gradient(135deg, var(--clone-cyan), var(--clone-purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      animation: cft 0.6s ease-out forwards;
+      text-align: center; padding: 0 1rem;
+    }
+    @keyframes cft { 0%{opacity:0;transform:scale(.5)} 30%{opacity:1;transform:scale(1.1)} 70%{opacity:1} 100%{opacity:0;transform:scale(1.3)} }
+
+    .shake { animation: shake 0.5s ease-in-out; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px) rotate(-.4deg)} 40%,80%{transform:translateX(5px) rotate(.4deg)} }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:0.25rem;margin-bottom:0.25rem">
+    <h1 id="main-title">RAGNARÖK</h1>
+    <div class="subtitle" id="main-subtitle">Synchronized Resonance System</div>
+  </div>
+
+  <!-- ══ MODE TOGGLE (host only) ══ -->
+  <div class="mode-toggle hidden" id="mode-toggle">
+    <button class="mode-tab active-ragnarok" id="tab-ragnarok" onclick="setMode('ragnarok')">⚡ Ragnarök</button>
+    <div class="mode-sep"></div>
+    <button class="mode-tab" id="tab-clone" onclick="setMode('clone')">🌀 Shadow Clone Jutsu</button>
+  </div>
+
+  <!-- ══ HOME ══ -->
+  <div id="view-home" class="card">
+    <div class="card-title">Initialize Session</div>
+    <p style="font-size:.75rem;color:rgba(232,220,200,.5);line-height:1.8;text-align:center">
+      The host summons the room.<br>Allies scan the seal to join.
+    </p>
+    <button class="btn btn-primary" onclick="becomeHost()">⚔ Host a Session</button>
+  </div>
+
+  <!-- ══ HOST ══ -->
+  <div id="view-host" class="card hidden">
+    <div class="card-title" id="host-card-title">Your Seal — Share to Gather</div>
+    <div id="qr-container"></div>
+    <div class="room-url" id="room-url-text"></div>
+    <div class="guest-count">
+      <div class="pulse-dot"></div>
+      <span><span class="count-number" id="guest-count">0</span>&nbsp;warriors</span>
+    </div>
+
+    <!-- RAGNARÖK controls -->
+    <div id="host-ragnarok" style="width:100%">
+      <button class="btn btn-scream" id="scream-btn" onclick="triggerScream()" disabled>
+        🔱 Unleash the Scream
+      </button>
+    </div>
+
+    <!-- SHADOW CLONE controls -->
+    <div id="host-clone" class="clone-hold-wrap hidden">
+      <div class="clone-hold-wrap">
+        <button class="btn-clone-hold" id="clone-hold-btn" disabled
+          ontouchstart="startRecording(event)"
+          ontouchend="stopRecording(event)"
+          onmousedown="startRecording(event)"
+          onmouseup="stopRecording(event)"
+          onmouseleave="stopRecording(event)">
+          <span class="btn-icon">🌀</span>
+          <span>HOLD</span>
+          <span>TO SPEAK</span>
+        </button>
+        <div class="clone-hint">Release to unleash your clones</div>
+      </div>
+    </div>
+
+    <div id="host-status" class="status status-waiting">Awaiting warriors…</div>
+  </div>
+
+  <!-- ══ GUEST ══ -->
+  <div id="view-guest" class="card hidden">
+    <div class="card-title" id="guest-card-title">You Have Answered the Call</div>
+    <div class="rune-spin" id="guest-rune">ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ</div>
+
+    <!-- Clone visualizer ring -->
+    <div class="clone-visualizer" id="clone-visualizer">
+      <div class="clone-center-label">YOU ARE<br>SURROUNDED</div>
+    </div>
+
+    <p id="guest-desc" style="font-size:.8rem;color:rgba(232,220,200,.55);line-height:1.8;text-align:center">
+      Stand ready.<br>When the host unleashes — all devices will scream as one.
+    </p>
+    <button class="btn btn-arm" id="arm-btn" onclick="armAudio()">🔊 Tap to Arm Audio</button>
+    <p style="font-size:.6rem;color:rgba(232,220,200,.25);letter-spacing:.1em">Required on iPhone / Safari</p>
+    <div id="guest-status" class="status status-waiting">Waiting for the host…</div>
+  </div>
+
+  <!-- ══ ERROR ══ -->
+  <div id="view-error" class="card hidden">
+    <div class="card-title" style="color:var(--fire)">Room Not Found</div>
+    <p style="font-size:.78rem;color:rgba(232,220,200,.45)">This seal has expired or never existed.</p>
+    <button class="btn btn-primary" onclick="location.href='/'">Return</button>
+  </div>
+</div>
+
+<!-- Scream overlay -->
+<div id="scream-overlay">
+  <div class="scream-ring" id="ring1"></div>
+  <div class="scream-ring" id="ring2" style="animation-delay:.2s"></div>
+  <div class="scream-ring" id="ring3" style="animation-delay:.4s"></div>
+  <div class="scream-text">SKÁL!</div>
+</div>
+
+<!-- Clone overlay -->
+<div id="clone-overlay">
+  <div class="clone-flash-text" id="clone-flash-text">Shadow Clone Jutsu!</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CLONE VOICE EFFECT PROFILES — one per device slot
+// ══════════════════════════════════════════════════════════
+const CLONE_PROFILES = [
+  { pitch: 1.0,  pan:  0.0, reverbMix: 0.05, label: 'Original',   color: '#00e5ff' },
+  { pitch: 0.82, pan: -0.9, reverbMix: 0.25, label: 'Deep Left',  color: '#b040fb' },
+  { pitch: 1.25, pan:  0.9, reverbMix: 0.2,  label: 'High Right', color: '#00e5ff' },
+  { pitch: 0.68, pan: -0.5, reverbMix: 0.45, label: 'Shadow',     color: '#b040fb' },
+  { pitch: 1.4,  pan:  0.5, reverbMix: 0.3,  label: 'Echo',       color: '#00e5ff' },
+  { pitch: 0.9,  pan: -1.0, reverbMix: 0.55, label: 'Distant L',  color: '#b040fb' },
+  { pitch: 1.15, pan:  1.0, reverbMix: 0.4,  label: 'Distant R',  color: '#00e5ff' },
+  { pitch: 0.75, pan:  0.0, reverbMix: 0.7,  label: 'Void',       color: '#b040fb' },
+];
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const socket = io(window.location.origin);
+let currentRoomId = null;
+let myDeviceIndex = 0;
+let currentMode = 'ragnarok'; // 'ragnarok' | 'clone'
+let audioCtx = null;
+let audioArmed = false;
+let mediaRecorder = null;
+let recordingChunks = [];
+let isRecording = false;
+let clockOffset = 0;
+
+// ── Latency ping ──────────────────────────────────────────
+function measureLatency() {
+  const t0 = Date.now();
+  socket.emit('ping', { t: t0 });
+}
+socket.on('pong', ({ t }) => { clockOffset = (Date.now() - t) / 2; });
+setInterval(measureLatency, 5000);
+measureLatency();
+
+// ── Audio Context ─────────────────────────────────────────
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function armAudio() {
+  const ctx = getAudioCtx();
+  const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start(0);
+  audioArmed = true;
+  const btn = document.getElementById('arm-btn');
+  if (btn) { btn.textContent = '✅ Audio Armed'; btn.classList.add('armed'); }
+  setGuestStatus('Armed — stand ready', 'status-ready');
+}
+
+// ══════════════════════════════════════════════════════════
+//  ROUTING
+// ══════════════════════════════════════════════════════════
+const pathParts = window.location.pathname.split('/');
+const isGuest = pathParts[1] === 'room' && pathParts[2];
+
+if (isGuest) {
+  joinAsGuest(pathParts[2]);
+} else {
+  show('view-home');
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODE SWITCHER (host only)
+// ══════════════════════════════════════════════════════════
+function setMode(mode) {
+  currentMode = mode;
+  const isClone = mode === 'clone';
+
+  document.getElementById('tab-ragnarok').className = 'mode-tab' + (isClone ? '' : ' active-ragnarok');
+  document.getElementById('tab-clone').className    = 'mode-tab' + (isClone ? ' active-clone' : '');
+  document.getElementById('host-ragnarok').classList.toggle('hidden', isClone);
+  document.getElementById('host-clone').classList.toggle('hidden', !isClone);
+
+  document.getElementById('main-title').className = isClone ? 'mode-clone' : '';
+  document.getElementById('main-subtitle').textContent = isClone
+    ? 'Shadow Clone Jutsu Mode'
+    : 'Synchronized Resonance System';
+  document.getElementById('host-card-title').textContent = isClone
+    ? 'Shadow Clone Jutsu'
+    : 'Your Seal — Share to Gather';
+  document.body.classList.toggle('mode-clone', isClone);
+  document.querySelector('#view-host.card')?.classList.toggle('mode-clone', isClone);
+}
+
+// ══════════════════════════════════════════════════════════
+//  HOST FLOW
+// ══════════════════════════════════════════════════════════
+function becomeHost() {
+  socket.emit('create-room');
+}
+
+socket.on('room-created', ({ roomId, deviceIndex }) => {
+  currentRoomId = roomId;
+  myDeviceIndex = deviceIndex;
+  show('view-host');
+  document.getElementById('mode-toggle').classList.remove('hidden');
+
+  const roomUrl = `${window.location.origin}/room/${roomId}`;
+  document.getElementById('room-url-text').textContent = roomUrl;
+  document.getElementById('qr-container').style.display = 'block';
+  new QRCode(document.getElementById('qr-container'), {
+    text: roomUrl, width: 180, height: 180,
+    colorDark: '#0f0f0f', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+  document.getElementById('scream-btn').disabled = false;
+  document.getElementById('clone-hold-btn').disabled = false;
+  setHostStatus('Room open — share the seal', 'status-ready');
+  getAudioCtx(); // pre-arm for host
+  audioArmed = true;
+});
+
+socket.on('guest-count', ({ count }) => {
+  document.getElementById('guest-count').textContent = count;
+});
+
+function triggerScream() {
+  if (!currentRoomId) return;
+  socket.emit('trigger-scream', { roomId: currentRoomId });
+}
+
+// ══════════════════════════════════════════════════════════
+//  RECORDING (Shadow Clone mode)
+// ══════════════════════════════════════════════════════════
+async function startRecording(e) {
+  e.preventDefault();
+  if (isRecording || currentMode !== 'clone') return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    recordingChunks = [];
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4';
+
+    mediaRecorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordingChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      sendCloneAudio();
+    };
+    mediaRecorder.start();
+    isRecording = true;
+
+    const btn = document.getElementById('clone-hold-btn');
+    btn.classList.add('recording');
+    btn.querySelector('span:nth-child(2)').textContent = '🔴';
+    btn.querySelector('span:nth-child(3)').textContent = 'RECORDING';
+    setHostStatus('Recording…', 'status-clone');
+  } catch (err) {
+    setHostStatus('Mic access denied', 'status-error');
+  }
+}
+
+function stopRecording(e) {
+  e.preventDefault();
+  if (!isRecording || !mediaRecorder) return;
+  mediaRecorder.stop();
+  isRecording = false;
+
+  const btn = document.getElementById('clone-hold-btn');
+  btn.classList.remove('recording');
+  btn.querySelector('span:nth-child(2)').textContent = '🌀';
+  btn.querySelector('span:nth-child(3)').textContent = 'HOLD TO SPEAK';
+  setHostStatus('Sending to clones…', 'status-clone');
+}
+
+function sendCloneAudio() {
+  const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType });
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    socket.emit('clone-audio', { roomId: currentRoomId, audioData: reader.result });
+    setHostStatus('Clones deployed!', 'status-clone');
+    setTimeout(() => setHostStatus('Hold to speak again', 'status-clone'), 2000);
+  };
+  reader.readAsDataURL(blob);
+}
+
+// ══════════════════════════════════════════════════════════
+//  GUEST FLOW
+// ══════════════════════════════════════════════════════════
+function joinAsGuest(roomId) {
+  show('view-guest');
+  socket.emit('join-room', { roomId });
+}
+
+socket.on('joined-room', ({ deviceIndex }) => {
+  myDeviceIndex = deviceIndex;
+  setGuestStatus('Connected — await the summons', 'status-ready');
+});
+socket.on('join-error', () => show('view-error'));
+socket.on('host-left', () => setGuestStatus('The host has left the realm', 'status-error'));
+
+// ══════════════════════════════════════════════════════════
+//  RAGNARÖK PLAYBACK
+// ══════════════════════════════════════════════════════════
+socket.on('play-scream', ({ playAt }) => {
+  const delay = Math.max(0, (playAt - Date.now()) - clockOffset);
+  setGuestStatus('INCOMING…', 'status-scream');
+  if (!isGuest) setHostStatus('INCOMING…', 'status-scream');
+  setTimeout(() => { playRagnarokScream(); triggerScreamVisuals(); }, delay);
+});
+
+function playRagnarokScream() {
+  const ctx = getAudioCtx();
+  const now = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0, now);
+  master.gain.linearRampToValueAtTime(0.8, now + 0.05);
+  master.gain.setValueAtTime(0.8, now + 1.5);
+  master.gain.exponentialRampToValueAtTime(0.001, now + 4.5);
+  master.connect(ctx.destination);
+
+  const sub = ctx.createOscillator(); sub.type = 'sawtooth';
+  sub.frequency.setValueAtTime(55, now); sub.frequency.exponentialRampToValueAtTime(38, now+4);
+  const sg = ctx.createGain(); sg.gain.setValueAtTime(0.6, now);
+  sub.connect(sg); sg.connect(master); sub.start(now); sub.stop(now+4.5);
+
+  const sc = ctx.createOscillator(); sc.type = 'sawtooth';
+  sc.frequency.setValueAtTime(200,now); sc.frequency.exponentialRampToValueAtTime(1800,now+.3);
+  sc.frequency.exponentialRampToValueAtTime(900,now+.8); sc.frequency.exponentialRampToValueAtTime(600,now+2); sc.frequency.exponentialRampToValueAtTime(300,now+4);
+  const scg = ctx.createGain(); scg.gain.setValueAtTime(0.5,now);
+  sc.connect(scg); scg.connect(master); sc.start(now); sc.stop(now+4.5);
+
+  const h = ctx.createOscillator(); h.type = 'square';
+  h.frequency.setValueAtTime(400,now); h.frequency.exponentialRampToValueAtTime(3600,now+.3);
+  h.frequency.exponentialRampToValueAtTime(1800,now+.8); h.frequency.exponentialRampToValueAtTime(1200,now+2); h.frequency.exponentialRampToValueAtTime(600,now+4);
+  const hg = ctx.createGain(); hg.gain.setValueAtTime(0.15,now);
+  h.connect(hg); hg.connect(master); h.start(now); h.stop(now+4.5);
+
+  const bufSz = ctx.sampleRate*.5;
+  const nBuf = ctx.createBuffer(1,bufSz,ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for(let i=0;i<bufSz;i++) nd[i]=(Math.random()*2-1);
+  const ns = ctx.createBufferSource(); ns.buffer = nBuf;
+  const nf = ctx.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=1200; nf.Q.value=0.5;
+  const ng = ctx.createGain(); ng.gain.setValueAtTime(0.3,now); ng.gain.exponentialRampToValueAtTime(0.001,now+.5);
+  ns.connect(nf); nf.connect(ng); ng.connect(master); ns.start(now);
+
+  const boom = ctx.createOscillator(); boom.type='sine';
+  boom.frequency.setValueAtTime(80,now); boom.frequency.exponentialRampToValueAtTime(20,now+1.5);
+  const bg = ctx.createGain(); bg.gain.setValueAtTime(1.0,now); bg.gain.exponentialRampToValueAtTime(0.001,now+1.5);
+  boom.connect(bg); bg.connect(master); boom.start(now); boom.stop(now+1.5);
+}
+
+// ══════════════════════════════════════════════════════════
+//  SHADOW CLONE PLAYBACK
+// ══════════════════════════════════════════════════════════
+socket.on('play-clone', ({ audioData, deviceIndex, totalDevices, playDelay }) => {
+  // Update guest UI to clone mode visuals
+  updateGuestToCloneMode(totalDevices, deviceIndex);
+
+  setTimeout(() => {
+    playCloneVoice(audioData, deviceIndex, totalDevices);
+  }, playDelay);
+});
+
+function updateGuestToCloneMode(totalDevices, myIndex) {
+  document.getElementById('main-title').className = 'mode-clone';
+  document.getElementById('main-subtitle').textContent = 'Shadow Clone Jutsu Mode';
+  document.getElementById('guest-card-title').textContent = 'Shadow Clone Jutsu';
+  document.getElementById('guest-rune').classList.add('hidden');
+  document.getElementById('guest-desc').classList.add('hidden');
+  document.body.classList.add('mode-clone');
+
+  // Build ring visualizer
+  const viz = document.getElementById('clone-visualizer');
+  viz.classList.add('active');
+  viz.innerHTML = '<div class="clone-center-label">YOU ARE<br>SURROUNDED</div>';
+
+  const count = Math.min(totalDevices, 8);
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    const r = 80;
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    const dot = document.createElement('div');
+    dot.className = 'clone-dot' + (i === myIndex ? ' my-clone' : '');
+    dot.id = `clone-dot-${i}`;
+    dot.style.left = `${90 + x}px`;
+    dot.style.top  = `${90 + y}px`;
+    dot.textContent = i === myIndex ? '👤' : '◉';
+    viz.appendChild(dot);
+  }
+}
+
+async function playCloneVoice(audioData, deviceIndex, totalDevices) {
+  const ctx = getAudioCtx();
+  const profile = CLONE_PROFILES[deviceIndex % CLONE_PROFILES.length];
+
+  // Decode the base64 audio
+  const base64 = audioData.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  let audioBuffer;
+  try {
+    audioBuffer = await ctx.decodeAudioData(bytes.buffer);
+  } catch (e) {
+    console.warn('Audio decode failed', e);
+    return;
+  }
+
+  // Light up this device's dot
+  const dot = document.getElementById(`clone-dot-${deviceIndex}`);
+  if (dot) { dot.classList.add('speaking'); }
+
+  // Flash overlay
+  showCloneFlash(profile, deviceIndex, totalDevices);
+  setGuestStatus(`Clone ${deviceIndex + 1} speaks…`, 'status-clone');
+
+  // Build audio graph: source → pitch (playbackRate) → panner → reverb → destination
+  const source  = ctx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.playbackRate.value = profile.pitch;
+
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = profile.pan;
+
+  const dryGain = ctx.createGain();
+  dryGain.gain.value = 1 - profile.reverbMix;
+
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = profile.reverbMix;
+
+  const convolver = ctx.createConvolver();
+  convolver.buffer = makeImpulse(ctx, 1.5 + profile.reverbMix * 2, 2.5);
+
+  source.connect(panner);
+  panner.connect(dryGain); dryGain.connect(ctx.destination);
+  panner.connect(convolver); convolver.connect(wetGain); wetGain.connect(ctx.destination);
+
+  source.start();
+
+  const duration = (audioBuffer.duration / profile.pitch) * 1000;
+  setTimeout(() => {
+    if (dot) { dot.classList.remove('speaking'); dot.classList.add('spoke'); }
+  }, duration);
+}
+
+function makeImpulse(ctx, duration, decay) {
+  const rate = ctx.sampleRate;
+  const length = rate * duration;
+  const buf = ctx.createBuffer(2, length, rate);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < length; i++)
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+  }
+  return buf;
+}
+
+function showCloneFlash(profile, deviceIndex, totalDevices) {
+  const overlay = document.getElementById('clone-overlay');
+  const txt = document.getElementById('clone-flash-text');
+  const labels = ['Shadow Clone Jutsu!', 'Kage Bunshin!', 'Clone activated!', 'From the shadows…', 'Another voice…', 'Surrounded!', 'No escape!', 'Everywhere at once!'];
+  txt.textContent = labels[deviceIndex % labels.length];
+  txt.style.animation = 'none';
+  txt.offsetHeight;
+  txt.style.animation = '';
+  overlay.classList.add('active');
+  setTimeout(() => overlay.classList.remove('active'), 600);
+}
+
+// ══════════════════════════════════════════════════════════
+//  RAGNARÖK VISUALS
+// ══════════════════════════════════════════════════════════
+function triggerScreamVisuals() {
+  ['ring1','ring2','ring3'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.animation = 'none'; el.offsetHeight; el.style.animation = '';
+  });
+  const txt = document.querySelector('.scream-text');
+  txt.style.animation = 'none'; txt.offsetHeight; txt.style.animation = '';
+
+  document.getElementById('scream-overlay').classList.add('active');
+  document.body.classList.add('shake');
+  setTimeout(() => document.getElementById('scream-overlay').classList.remove('active'), 2200);
+  setTimeout(() => document.body.classList.remove('shake'), 600);
+  const done = () => {
+    if (isGuest) setGuestStatus('The realm has trembled.', 'status-ready');
+    else setHostStatus('The realm has trembled.', 'status-ready');
+  };
+  setTimeout(done, 2500);
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════════
+function show(id) {
+  ['view-home','view-host','view-guest','view-error'].forEach(v =>
+    document.getElementById(v).classList.toggle('hidden', v !== id));
+}
+function setHostStatus(msg, cls) {
+  const el = document.getElementById('host-status');
+  if (el) { el.textContent = msg; el.className = 'status ' + cls; }
+}
+function setGuestStatus(msg, cls) {
+  const el = document.getElementById('guest-status');
+  if (el) { el.textContent = msg; el.className = 'status ' + cls; }
+}
+</script>
+</body>
+</html>
